@@ -1,0 +1,10 @@
+; $Id$
+name = Field YouTube
+description = Defines an YouTube field type.
+core = 7.x
+package = Fields
+
+files[] = fieldyoutube.module
+files[] = fieldyoutube.install
+files[] = fieldyoutube.class.inc
+

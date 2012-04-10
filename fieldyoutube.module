@@ -1,0 +1,236 @@
+<?php
+// $Id$
+
+/**
+ * @file
+ * Youtube field hooks, and functionalities
+ */
+
+
+/**
+ * Implements hook_field_info().
+ */
+function fieldyoutube_field_info() {
+  return array(
+    'youtube' => array(
+      'label' => 'YouTube',
+      'description' => t('This field stores and renderes YouTube videos.'),
+      'default_widget' => 'text_textfield',
+      'default_formatter' => 'default',
+      'property_type' => 'text',
+    ),
+  );
+}
+
+function fieldyoutube_field_validate($entity_type, $entity, $field, $instance, $langcode, $items, &$errors) {
+	foreach($items as $delta => $item) {
+		if(isset($item['youtube'])) {
+			$youtubeID = parseURL($item['youtube']);
+			$headers = get_headers('http://gdata.youtube.com/feeds/api/videos/' . $youtubeID);
+			if (!strpos($headers[0], '200')) {
+				$errors[$field['field_name']][$langcode][$delta][] = array(
+		          'error' => 'fieldyoutube_invalid_id', 
+		          'message' => t('%name: You have entered an invalid YouTube URL.', array('%name' => $instance['label'])),
+		        );
+			}
+		}
+	}
+}
+
+function fieldyoutube_field_widget_error($element, $error, $form, &$form_state) {
+	form_error($element, $error['message']);
+}
+
+/**
+ * Implements hook_content_is_empty().
+ */
+function fieldyoutube_field_is_empty($item, $field) {
+  if (empty($item['youtube'])) {
+    return TRUE;
+  }
+  return FALSE;
+}
+
+
+/**
+ * Implements hook_field_formatter_info().
+ *
+ */
+function fieldyoutube_field_formatter_info() {
+  $formats = array(
+    'fieldyoutube_embed' => array(
+      'label' => t('Default Video @ 640 x 360'),
+      'description' => t('Will show embeded YouTube on your node'),
+      'field types' => array('youtube'),
+    ),
+    'fieldyoutube_embed_desired_width_autoplay' => array(
+      'label' => t('Video @ Specified Size Autoplay'),
+      'description' => t('Will show embeded YouTube on your node'),
+      'field types' => array('youtube'),
+    ),
+    'fieldyoutube_embed_desired_width_no_autoplay' => array(
+      'label' => t('Video @ Specified Size No Autoplay'),
+      'description' => t('Will show embeded YouTube on your node'),
+      'field types' => array('youtube'),
+    ),
+    'fieldyoutube_thumblink' => array(
+      'label' => t('Image with link to video'),
+      'description' => t('Will show image thumbnail linked to YouTube video'),
+      'field types' => array('youtube'),
+    ),
+    'fieldyoutube_plain' => array(
+      'label' => t('Text link to video'),
+      'description' => t('Will show plain text link to YouTube video'),
+      'field types' => array('youtube'),
+    ),
+  );
+  return $formats;
+}
+
+
+/**
+ * Implements hook_field_formatter_view().
+ */
+function fieldyoutube_field_formatter_view($object_type, $object, $field, $instance, $langcode, $items, $display) {
+  $res = explode('x', $instance['widget']['settings']['resolution']);
+  $element = array();
+  switch ($display['type']) {
+    case 'fieldyoutube_embed':
+      foreach ($items as $delta => $item) {
+        $youtube = new YouTube($item['youtube']);
+        //$output = $youtube->EmbedVideo($res[0], $res[1]);
+        $output = $youtube->EmbedVideo(640, 360);
+        $element[$delta] = array('#markup' => $output);
+      }
+      break;
+    case 'fieldyoutube_embed_desired_width_autoplay':
+		foreach ($items as $delta => $item) {
+			$youtube = new YouTube($item['youtube']);
+	        $output = $youtube->EmbedVideo($res[0], $res[1]);
+	        //$output = $youtube->EmbedVideo(640, 360);
+	        $element[$delta] = array('#markup' => $output);
+		}
+      	break;
+    case 'fieldyoutube_embed_desired_width_no_autoplay':
+		foreach ($items as $delta => $item) {
+			$youtube = new YouTube($item['youtube']);
+	        $output = $youtube->EmbedVideo($res[0], $res[1], null, 1, 0);
+	        //$output = $youtube->EmbedVideo(640, 360);
+	        $element[$delta] = array('#markup' => $output);
+		}
+      	break;
+    case 'fieldyoutube_thumblink':
+      foreach ($items as $delta => $item) {
+        $youtube = new YouTube($item['youtube']);
+        $output = l( $youtube->ShowImg(), $item['youtube'], array('html' => TRUE) );
+        $element[$delta] = array('#markup' => $output);
+        break;
+      }
+      break;
+    case 'fieldyoutube_plain':
+      foreach ($items as $delta => $item) {
+        $output = l( t('Click here to watch this video.'), $item['youtube']);
+        $element[$delta] = array('#markup' => $output);
+      }
+      break;
+  }
+  return $element;
+}
+
+
+/**
+ * Implements hook_field_widget_info().
+ */
+function fieldyoutube_field_widget_info() {
+  return array(
+    'fieldyoutube_textfield' => array(
+      'label' => t('Text field'),
+      'field types' => array('youtube'),
+      'settings' => array('size' => 60),
+    ),
+  );
+}
+
+
+/**
+ * Implements hook_field_widget_settings_form().
+ */
+function fieldyoutube_field_widget_settings_form($field, $instance) {
+  $widget = $instance['widget'];
+  $settings = $widget['settings'];
+
+  $form['size'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Size of textfield'),
+    '#default_value' => $settings['size'],
+    '#required' => TRUE,
+    '#element_validate' => array('_element_validate_integer_positive'),
+  );
+  $form['resolution'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Resolution of rendered video'),
+    '#default_value' => (isset($settings['resolution'])) ? $settings['resolution'] : '425x344',
+    '#required' => FALSE,
+  );
+  // TODO: Quality switcher
+  return $form;
+}
+
+
+/**
+ * Implements hook_field_widget_form().
+ */
+function fieldyoutube_field_widget_form(&$form, &$form_state, $field, $instance, $langcode, $items, $delta, $base) {
+  $element = $base;
+  $element['youtube'] = $base + array(
+    '#type' => 'textfield',
+    '#default_value' => isset($items[$delta]['youtube']) ? $items[$delta]['youtube'] : NULL,
+    '#size' => $instance['widget']['settings']['size'],
+    '#prefix' => '<div class="text-full-wrapper">',
+    '#suffix' => '</div>',
+  );
+  return $element;
+}
+
+
+/**
+ * Implements hook_node_insert().
+ */
+
+function fieldyoutube_node_presave($node) {
+	if($node->type == 'media_video') {
+		$path = GetImg( $node->field_youtube['und'][0]['youtube'] ,0);
+		$name = pathinfo($path);
+		$fid  = '';
+		$img_import = write_image_info($path, $name['filename'], $fid, parseURL($node->field_youtube['und'][0]['youtube']));
+		$node->field_video_preview['und'][0]['fid'] = $fid;
+		$node->field_video_preview['und'][0]['description'] = '';
+		$node->field_video_preview['und'][0]['title'] = '';
+		$node->field_video_preview['und'][0]['alt'] = '';
+	}
+}
+
+
+function GetImg($url = '', $imgid = 1) {
+	$videoid = parseURL($url);
+	if (!$videoid) $videoid = $url;
+	
+	return "http://img.youtube.com/vi/".$videoid."/".$imgid.".jpg";
+}
+
+function parseURL($url) {
+    if (preg_match('/watch\?v\=([A-Za-z0-9_-]+)/', $url, $matches))
+      return $matches[1];
+    else
+      return FALSE;
+} 
+
+
+function write_image_info($remote_image_path, $remote_image_name, &$fid, $vid) {
+	$image_path = $remote_image_path;
+	$remote_image_name = $remote_image_name . '.jpg';
+
+	$file_temp = file_get_contents($remote_image_path);
+	$file_temp = file_save_data($file_temp, file_default_scheme() . '://' . $vid .  $remote_image_name, FILE_EXISTS_RENAME);
+	$fid = $file_temp->fid;
+}
